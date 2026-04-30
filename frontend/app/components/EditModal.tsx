@@ -17,7 +17,8 @@ const FIELDS: { key: keyof Contract; label: string; type?: string }[] = [
   { key: "vendor", label: "렌탈업체" },
   { key: "item", label: "품목" },
   { key: "status", label: "사용현황" },
-  { key: "serial_no", label: "S/N" },
+  { key: "model_name", label: "모델명" },
+  { key: "serial_no", label: "S/N·전화번호" },
   { key: "contract_months", label: "계약기간(월)" },
   { key: "start_date", label: "시작일", type: "date" },
   { key: "end_date", label: "만료일", type: "date" },
@@ -28,7 +29,7 @@ const FIELDS: { key: keyof Contract; label: string; type?: string }[] = [
 ];
 
 const EMPTY: Omit<Contract, "id"> = {
-  no: null, item: null, status: "사용중", serial_no: null, vendor: null,
+  no: null, item: null, status: "사용중", model_name: null, serial_no: null, vendor: null,
   corporation: null, contract_months: null, start_date: null, end_date: null,
   usage_months: null, address: null, monthly_fee: null, payment_method: null,
   notes: null, source_sheet: null,

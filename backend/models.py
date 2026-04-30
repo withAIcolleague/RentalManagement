@@ -7,7 +7,8 @@ class Contract(SQLModel, table=True):
     no: Optional[str] = None
     item: Optional[str] = None          # 품목
     status: Optional[str] = None        # 사용현황
-    serial_no: Optional[str] = None     # S/N
+    model_name: Optional[str] = None    # 모델명
+    serial_no: Optional[str] = None     # S/N 또는 전화번호
     vendor: Optional[str] = None        # 렌탈업체
     corporation: Optional[str] = None   # 등록법인
     contract_months: Optional[str] = None
@@ -25,6 +26,7 @@ class ContractWrite(SQLModel):
     no: Optional[str] = None
     item: Optional[str] = None
     status: Optional[str] = None
+    model_name: Optional[str] = None
     serial_no: Optional[str] = None
     vendor: Optional[str] = None
     corporation: Optional[str] = None
@@ -44,6 +46,7 @@ class ContractRead(SQLModel):
     no: Optional[str]
     item: Optional[str]
     status: Optional[str]
+    model_name: Optional[str]
     serial_no: Optional[str]
     vendor: Optional[str]
     corporation: Optional[str]

@@ -5,6 +5,7 @@ export interface Contract {
   no: string | null;
   item: string | null;
   status: string | null;
+  model_name: string | null;
   serial_no: string | null;
   vendor: string | null;
   corporation: string | null;
