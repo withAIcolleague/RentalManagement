@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Contract, api } from "@/lib/api";
-import { X, Trash2, Save } from "lucide-react";
+import { Contract, AddressHistory, api } from "@/lib/api";
+import { X, Trash2, Save, Plus, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Props {
   contract: Contract | null;
@@ -40,6 +40,14 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // 이력 관련 state
+  const [history, setHistory] = useState<AddressHistory[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [newHistAddr, setNewHistAddr] = useState("");
+  const [newHistDate, setNewHistDate] = useState("");
+  const [newHistNote, setNewHistNote] = useState("");
+  const [addingHist, setAddingHist] = useState(false);
+
   useEffect(() => {
     const src = contract ?? { id: 0, ...EMPTY };
     const init: Record<string, string> = {};
@@ -49,7 +57,16 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
     });
     setForm(init);
     setConfirmDelete(false);
-  }, [contract]);
+    setHistory([]);
+    setHistoryOpen(false);
+    setNewHistAddr("");
+    setNewHistDate("");
+    setNewHistNote("");
+
+    if (contract && !isNew) {
+      api.addressHistory(contract.id).then(setHistory).catch(() => {});
+    }
+  }, [contract, isNew]);
 
   const calcEndDate = (startDate: string, months: string): string => {
     if (!startDate || !months) return "";
@@ -58,7 +75,6 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
     const d = new Date(startDate);
     if (isNaN(d.getTime())) return "";
     d.setMonth(d.getMonth() + m);
-    // 하루 빼서 "시작일로부터 N개월 후 전날"
     d.setDate(d.getDate() - 1);
     return d.toISOString().slice(0, 10);
   };
@@ -77,14 +93,8 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
 
   const buildPayload = () => {
     const payload: Record<string, string | number | null> = { ...form };
-    if (form.monthly_fee !== "") {
-      payload.monthly_fee = parseFloat(form.monthly_fee) || null;
-    } else {
-      payload.monthly_fee = null;
-    }
-    Object.keys(payload).forEach((k) => {
-      if (payload[k] === "") payload[k] = null;
-    });
+    payload.monthly_fee = form.monthly_fee !== "" ? parseFloat(form.monthly_fee) || null : null;
+    Object.keys(payload).forEach((k) => { if (payload[k] === "") payload[k] = null; });
     return payload;
   };
 
@@ -97,6 +107,10 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
         saved = await api.createContract(payload as Omit<Contract, "id">);
       } else {
         saved = await api.updateContract(contract!.id, payload as Partial<Contract>);
+        // 주소가 바뀌었으면 이력 새로고침
+        if (payload.address !== contract!.address) {
+          api.addressHistory(saved.id).then(setHistory).catch(() => {});
+        }
       }
       onSaved(saved);
     } finally {
@@ -115,7 +129,35 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
     }
   };
 
+  const handleAddHistory = async () => {
+    if (!newHistAddr || !newHistDate || !contract) return;
+    setAddingHist(true);
+    try {
+      const h = await api.addAddressHistory(contract.id, {
+        address: newHistAddr,
+        changed_date: newHistDate,
+        notes: newHistNote || undefined,
+      });
+      setHistory((prev) => [h, ...prev]);
+      setNewHistAddr("");
+      setNewHistDate("");
+      setNewHistNote("");
+    } finally {
+      setAddingHist(false);
+    }
+  };
+
+  const handleDeleteHistory = async (hid: number) => {
+    await api.deleteAddressHistory(hid);
+    setHistory((prev) => prev.filter((h) => h.id !== hid));
+  };
+
   if (!contract && !isNew) return null;
+
+  const isAutoEndDate =
+    !!form.start_date &&
+    !!form.contract_months &&
+    form.end_date === calcEndDate(form.start_date, form.contract_months);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -133,18 +175,12 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
         {/* Body */}
         <div className="overflow-y-auto px-6 py-4 space-y-3 flex-1">
           {FIELDS.map(({ key, label, type }) => {
-            const isAutoEndDate =
-              key === "end_date" &&
-              !!form.start_date &&
-              !!form.contract_months &&
-              form.end_date === calcEndDate(form.start_date, form.contract_months);
+            const isAuto = key === "end_date" && isAutoEndDate;
             return (
               <div key={key} className="flex items-start gap-3">
                 <label className="text-xs text-gray-500 w-28 pt-2 shrink-0">
                   {label}
-                  {isAutoEndDate && (
-                    <span className="ml-1 text-blue-400 text-[10px]">자동</span>
-                  )}
+                  {isAuto && <span className="ml-1 text-blue-400 text-[10px]">자동</span>}
                 </label>
                 {key === "status" ? (
                   <select
@@ -161,13 +197,86 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
                     value={form[key] ?? ""}
                     onChange={(e) => set(key, e.target.value)}
                     className={`flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
-                      isAutoEndDate ? "bg-blue-50 border-blue-200" : ""
+                      isAuto ? "bg-blue-50 border-blue-200" : ""
                     }`}
                   />
                 )}
               </div>
             );
           })}
+
+          {/* 설치주소 이력 (수정 모드에서만 표시) */}
+          {!isNew && (
+            <div className="mt-2 border rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((p) => !p)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+              >
+                <span>설치주소 이력 {history.length > 0 && `(${history.length}건)`}</span>
+                {historyOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+
+              {historyOpen && (
+                <div className="px-4 py-3 space-y-3">
+                  {/* 이력 목록 */}
+                  {history.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-2">이력 없음</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {history.map((h) => (
+                        <li key={h.id} className="flex items-start gap-2 text-xs">
+                          <span className="text-gray-400 shrink-0 pt-0.5">{h.changed_date}</span>
+                          <span className="flex-1 text-gray-700">{h.address}</span>
+                          {h.notes && <span className="text-gray-400">{h.notes}</span>}
+                          <button
+                            onClick={() => handleDeleteHistory(h.id)}
+                            className="text-gray-300 hover:text-red-400 shrink-0"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* 수동 이력 추가 */}
+                  <div className="border-t pt-3 space-y-2">
+                    <p className="text-xs text-gray-400 font-medium">이력 직접 추가</p>
+                    <input
+                      type="text"
+                      placeholder="이전 설치주소"
+                      value={newHistAddr}
+                      onChange={(e) => setNewHistAddr(e.target.value)}
+                      className="w-full text-xs border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={newHistDate}
+                        onChange={(e) => setNewHistDate(e.target.value)}
+                        className="flex-1 text-xs border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      />
+                      <input
+                        type="text"
+                        placeholder="비고"
+                        value={newHistNote}
+                        onChange={(e) => setNewHistNote(e.target.value)}
+                        className="flex-1 text-xs border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      />
+                      <button
+                        onClick={handleAddHistory}
+                        disabled={!newHistAddr || !newHistDate || addingHist}
+                        className="flex items-center gap-1 text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 disabled:opacity-40 transition"
+                      >
+                        <Plus size={12} /> 추가
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -185,9 +294,7 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
               <Trash2 size={14} />
               {confirmDelete ? "정말 삭제" : "삭제"}
             </button>
-          ) : (
-            <div />
-          )}
+          ) : <div />}
           <div className="flex gap-2">
             <button
               onClick={onClose}

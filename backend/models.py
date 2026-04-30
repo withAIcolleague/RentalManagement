@@ -61,6 +61,22 @@ class ContractRead(SQLModel):
     source_sheet: Optional[str]
 
 
+class AddressHistory(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    contract_id: int = Field(index=True)
+    address: str                        # 이전 설치주소
+    changed_date: str                   # 이전 주소로 교체된 날짜 (YYYY-MM-DD)
+    notes: Optional[str] = None
+
+
+class AddressHistoryRead(SQLModel):
+    id: int
+    contract_id: int
+    address: str
+    changed_date: str
+    notes: Optional[str]
+
+
 class ContractSummary(SQLModel):
     total_count: int
     active_count: int

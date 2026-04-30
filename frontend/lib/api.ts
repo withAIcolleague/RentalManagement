@@ -73,6 +73,14 @@ async function get<T>(path: string, params?: Record<string, string | number | un
   return res.json();
 }
 
+export interface AddressHistory {
+  id: number;
+  contract_id: number;
+  address: string;
+  changed_date: string;
+  notes: string | null;
+}
+
 export const api = {
   summary: () => get<Summary>("/contracts/summary"),
   byVendor: () => get<VendorSummary[]>("/contracts/by-vendor"),
@@ -113,6 +121,22 @@ export const api = {
     }),
   deleteContract: (id: number) =>
     fetch(`${BASE}/contracts/${id}`, { method: "DELETE" }).then((r) => {
+      if (!r.ok) throw new Error(`API error ${r.status}`);
+      return r.json();
+    }),
+  addressHistory: (contractId: number) =>
+    get<AddressHistory[]>(`/contracts/${contractId}/address-history`),
+  addAddressHistory: (contractId: number, data: { address: string; changed_date: string; notes?: string }) =>
+    fetch(`${BASE}/contracts/${contractId}/address-history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`API error ${r.status}`);
+      return r.json() as Promise<AddressHistory>;
+    }),
+  deleteAddressHistory: (historyId: number) =>
+    fetch(`${BASE}/contracts/address-history/${historyId}`, { method: "DELETE" }).then((r) => {
       if (!r.ok) throw new Error(`API error ${r.status}`);
       return r.json();
     }),

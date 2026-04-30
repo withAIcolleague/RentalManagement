@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlmodel import Session, select, col, func
 
 from database import get_session
-from models import Contract, ContractRead, ContractWrite, ContractSummary, VendorSummary, CorporationSummary
+from models import (Contract, ContractRead, ContractWrite,
+                    AddressHistory, AddressHistoryRead,
+                    ContractSummary, VendorSummary, CorporationSummary)
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
 
@@ -158,6 +160,17 @@ def update_contract(contract_id: int, data: ContractWrite, session: Session = De
     c = session.get(Contract, contract_id)
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+
+    # 주소가 변경된 경우 기존 주소를 이력에 저장
+    new_address = data.address
+    if c.address and new_address and c.address != new_address:
+        history = AddressHistory(
+            contract_id=contract_id,
+            address=c.address,
+            changed_date=date.today().isoformat(),
+        )
+        session.add(history)
+
     for k, v in data.model_dump().items():
         setattr(c, k, v)
     session.add(c)
@@ -171,6 +184,59 @@ def delete_contract(contract_id: int, session: Session = Depends(get_session)):
     c = session.get(Contract, contract_id)
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    # 이력도 함께 삭제
+    histories = session.exec(
+        select(AddressHistory).where(AddressHistory.contract_id == contract_id)
+    ).all()
+    for h in histories:
+        session.delete(h)
     session.delete(c)
+    session.commit()
+    return {"ok": True}
+
+
+# ── 설치주소 이력 ─────────────────────────────────────────────────
+
+@router.get("/{contract_id}/address-history", response_model=List[AddressHistoryRead])
+def get_address_history(contract_id: int, session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(AddressHistory)
+        .where(AddressHistory.contract_id == contract_id)
+        .order_by(AddressHistory.changed_date.desc())
+    ).all()
+    return rows
+
+
+class AddressHistoryCreate(AddressHistoryRead):
+    id: Optional[int] = None
+    contract_id: Optional[int] = None
+
+
+@router.post("/{contract_id}/address-history", response_model=AddressHistoryRead)
+def add_address_history(
+    contract_id: int,
+    data: AddressHistoryCreate,
+    session: Session = Depends(get_session),
+):
+    if not session.get(Contract, contract_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    h = AddressHistory(
+        contract_id=contract_id,
+        address=data.address,
+        changed_date=data.changed_date or date.today().isoformat(),
+        notes=data.notes,
+    )
+    session.add(h)
+    session.commit()
+    session.refresh(h)
+    return h
+
+
+@router.delete("/address-history/{history_id}")
+def delete_address_history(history_id: int, session: Session = Depends(get_session)):
+    h = session.get(AddressHistory, history_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="Not found")
+    session.delete(h)
     session.commit()
     return {"ok": True}
