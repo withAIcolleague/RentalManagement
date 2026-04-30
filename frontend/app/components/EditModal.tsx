@@ -50,8 +50,29 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
     setConfirmDelete(false);
   }, [contract]);
 
+  const calcEndDate = (startDate: string, months: string): string => {
+    if (!startDate || !months) return "";
+    const m = parseInt(months);
+    if (isNaN(m) || m <= 0) return "";
+    const d = new Date(startDate);
+    if (isNaN(d.getTime())) return "";
+    d.setMonth(d.getMonth() + m);
+    // 하루 빼서 "시작일로부터 N개월 후 전날"
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+
   const set = (key: string, val: string) =>
-    setForm((prev) => ({ ...prev, [key]: val }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: val };
+      if (key === "start_date" || key === "contract_months") {
+        const sd = key === "start_date" ? val : prev.start_date ?? "";
+        const mo = key === "contract_months" ? val : prev.contract_months ?? "";
+        const auto = calcEndDate(sd, mo);
+        if (auto) next.end_date = auto;
+      }
+      return next;
+    });
 
   const buildPayload = () => {
     const payload: Record<string, string | number | null> = { ...form };
@@ -110,28 +131,42 @@ export default function EditModal({ contract, isNew, onClose, onSaved, onDeleted
 
         {/* Body */}
         <div className="overflow-y-auto px-6 py-4 space-y-3 flex-1">
-          {FIELDS.map(({ key, label, type }) => (
-            <div key={key} className="flex items-start gap-3">
-              <label className="text-xs text-gray-500 w-28 pt-2 shrink-0">{label}</label>
-              {key === "status" ? (
-                <select
-                  value={form[key] ?? ""}
-                  onChange={(e) => set(key, e.target.value)}
-                  className="flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                >
-                  <option value="사용중">사용중</option>
-                  <option value="미사용">미사용</option>
-                </select>
-              ) : (
-                <input
-                  type={type ?? "text"}
-                  value={form[key] ?? ""}
-                  onChange={(e) => set(key, e.target.value)}
-                  className="flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
-              )}
-            </div>
-          ))}
+          {FIELDS.map(({ key, label, type }) => {
+            const isAutoEndDate =
+              key === "end_date" &&
+              !!form.start_date &&
+              !!form.contract_months &&
+              form.end_date === calcEndDate(form.start_date, form.contract_months);
+            return (
+              <div key={key} className="flex items-start gap-3">
+                <label className="text-xs text-gray-500 w-28 pt-2 shrink-0">
+                  {label}
+                  {isAutoEndDate && (
+                    <span className="ml-1 text-blue-400 text-[10px]">자동</span>
+                  )}
+                </label>
+                {key === "status" ? (
+                  <select
+                    value={form[key] ?? ""}
+                    onChange={(e) => set(key, e.target.value)}
+                    className="flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="사용중">사용중</option>
+                    <option value="미사용">미사용</option>
+                  </select>
+                ) : (
+                  <input
+                    type={type ?? "text"}
+                    value={form[key] ?? ""}
+                    onChange={(e) => set(key, e.target.value)}
+                    className={`flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                      isAutoEndDate ? "bg-blue-50 border-blue-200" : ""
+                    }`}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Footer */}
