@@ -11,7 +11,7 @@ import {
   useReactTable,
   SortingState,
 } from "@tanstack/react-table";
-import { RefreshCw, Search, X, Plus } from "lucide-react";
+import { RefreshCw, Search, X, Plus, Download } from "lucide-react";
 import EditModal from "@/app/components/EditModal";
 
 const col = createColumnHelper<Contract>();
@@ -229,6 +229,19 @@ export default function Home() {
           >
             <Plus size={13} /> 새 계약
           </button>
+          <a
+            href={api.exportExcel({
+              corporation: filterCorp || undefined,
+              vendor: filterVendor || undefined,
+              status: filterStatus || undefined,
+              expiring_days: filterExpiry ? parseInt(filterExpiry) : undefined,
+              q: search || undefined,
+            })}
+            download
+            className="flex items-center gap-1.5 text-xs bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-lg transition"
+          >
+            <Download size={13} /> Excel 내보내기
+          </a>
           <button
             onClick={handleReimport}
             className="flex items-center gap-1.5 text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition"

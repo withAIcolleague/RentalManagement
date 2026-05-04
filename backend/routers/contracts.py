@@ -1,7 +1,11 @@
 from datetime import date, timedelta
 from typing import Optional, List
+import io
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select, col, func
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
 from database import get_session
 from models import (Contract, ContractRead, ContractWrite,
@@ -240,3 +244,83 @@ def delete_address_history(history_id: int, session: Session = Depends(get_sessi
     session.delete(h)
     session.commit()
     return {"ok": True}
+
+
+# ── Excel 내보내기 ─────────────────────────────────────────────────
+
+@router.get("/export/excel")
+def export_excel(
+    session: Session = Depends(get_session),
+    corporation: Optional[str] = Query(None),
+    vendor: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    expiring_days: Optional[int] = Query(None),
+    q: Optional[str] = Query(None),
+):
+    stmt = select(Contract)
+    if corporation:
+        stmt = stmt.where(Contract.corporation == corporation)
+    if vendor:
+        stmt = stmt.where(Contract.vendor == vendor)
+    if status:
+        stmt = stmt.where(Contract.status == status)
+    if expiring_days is not None:
+        today = date.today().isoformat()
+        deadline = (date.today() + timedelta(days=expiring_days)).isoformat()
+        stmt = stmt.where(Contract.end_date >= today).where(Contract.end_date <= deadline)
+    if q:
+        kw = f"%{q}%"
+        stmt = stmt.where(
+            col(Contract.item).like(kw)
+            | col(Contract.serial_no).like(kw)
+            | col(Contract.address).like(kw)
+            | col(Contract.notes).like(kw)
+            | col(Contract.corporation).like(kw)
+            | col(Contract.vendor).like(kw)
+        )
+    stmt = stmt.order_by(col(Contract.end_date).asc())
+    contracts = session.exec(stmt).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "렌탈현황"
+
+    HEADERS = [
+        "No", "품목", "사용현황", "모델명", "S/N·전화번호",
+        "렌탈업체", "등록법인", "계약기간(월)", "시작일", "만료일",
+        "설치주소", "월렌트비", "납부방식", "비고", "원본시트",
+    ]
+    FIELDS = [
+        "no", "item", "status", "model_name", "serial_no",
+        "vendor", "corporation", "contract_months", "start_date", "end_date",
+        "address", "monthly_fee", "payment_method", "notes", "source_sheet",
+    ]
+
+    header_fill = PatternFill("solid", fgColor="1F4E79")
+    header_font = Font(color="FFFFFF", bold=True)
+
+    for col_idx, header in enumerate(HEADERS, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for row_idx, contract in enumerate(contracts, 2):
+        for col_idx, field in enumerate(FIELDS, 1):
+            ws.cell(row=row_idx, column=col_idx, value=getattr(contract, field))
+
+    # 열 너비 자동 조정
+    col_widths = [6, 14, 10, 16, 18, 12, 12, 10, 12, 12, 40, 14, 10, 20, 14]
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"렌탈현황_{date.today().isoformat()}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )

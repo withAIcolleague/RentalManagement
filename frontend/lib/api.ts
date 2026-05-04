@@ -140,4 +140,13 @@ export const api = {
       if (!r.ok) throw new Error(`API error ${r.status}`);
       return r.json();
     }),
+  exportExcel: (q: ContractQuery) => {
+    const url = new URL(BASE + "/contracts/export/excel");
+    if (q.corporation) url.searchParams.set("corporation", q.corporation);
+    if (q.vendor) url.searchParams.set("vendor", q.vendor);
+    if (q.status) url.searchParams.set("status", q.status);
+    if (q.expiring_days) url.searchParams.set("expiring_days", String(q.expiring_days));
+    if (q.q) url.searchParams.set("q", q.q);
+    return url.toString();
+  },
 };
